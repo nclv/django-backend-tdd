@@ -10,7 +10,7 @@ Tools and Technologies: (Asynchronous) Python, Django, Django REST Framework, Dj
 ## Uber App Using Django Channels
 Many apps rely on real-time, bi-directional communication to give users a great experience. One example is a ride-sharing app like Uber or Lyft, which is built on the messages that are sent between a rider and a driver. A rider selects a starting location and destination, then broadcasts a trip request to all nearby drivers. An available driver accepts the trip and meets the rider at the pick-up address. In the meantime, every move the driver makes is sent to the rider almost instantaneously and the rider can track the trip status as long as it is active.
 
-## Done
+## Getting started
 
  * We added Django REST Framework along with our own trips app in ```INSTALLED_APPS``` in ```taxi/settings.py```
  * We also added an ```AUTH_USER_MODEL``` setting to make Django reference a user model of our design instead of the built-in one since we'll need to store more user data than what the standard fields allow.
