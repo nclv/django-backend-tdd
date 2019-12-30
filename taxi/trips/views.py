@@ -4,10 +4,11 @@ from django.shortcuts import render
 
 from django.contrib.auth import get_user_model, login, logout # new
 from django.contrib.auth.forms import AuthenticationForm # new
-from rest_framework import generics, permissions, status, views # new
+from rest_framework import generics, permissions, status, views, viewsets # new
 from rest_framework.response import Response
 
-from .serializers import UserSerializer
+from .models import Trip
+from .serializers import TripSerializer, UserSerializer
 
 
 class SignUpView(generics.CreateAPIView):
@@ -34,3 +35,11 @@ class LogOutView(views.APIView):
     def post(self, *args, **kwargs):
         logout(self.request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TripView(viewsets.ReadOnlyModelViewSet):
+    lookup_field = 'id' # new
+    lookup_url_kwarg = 'trip_id' # new
+    permission_classes = (permissions.IsAuthenticated,)
+    queryset = Trip.objects.all()
+    serializer_class = TripSerializer

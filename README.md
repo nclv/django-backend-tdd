@@ -148,6 +148,41 @@ $ curl -X POST http://localhost:8000/api/log_in/ \
 }
 ```
 
+## HTTP
+
+After users log in, they should be taken to a dashboard that displays an overview of their user-related data. Even though we plan to use WebSockets for user-to-user communication, we still have a use for run-of-the-mill HTTP requests. Users should be able to query the server for information about their past, present, and future trips. Up-to-date information is vital to understanding where the user has travelled from or for planning where she is traveling next.
+
+Our HTTP-related tests capture these scenarios.
+
+### All Trips
+
+First, let's add a feature to let users view all of the trips associated with their accounts. As an initial step, we will allow users to see all existing trips; later on in this tutorial, we will add better filtering.
+
+ * Add a test case to the bottom of our existing tests in ```trips/tests/test_http.py```. Our test creates two trips and then makes a call to the trip list API, which should successfully return the trip data. The test should fail ```python manage.py test trips.tests```.
+ * First, we need to create a model that represents the concept of a trip. Update the ```trips/models.py``` file. Since a trip is simply a transportation event between a starting location and a destination, we included a pick-up address and a drop-off address. At any given point in time, a trip can be in a specific state, so we added a status to identify whether a trip is requested, started, in progress, or completed. Lastly, we need to have a consistent way to identify and track trips that is also difficult for someone to guess. So, we use a UUID for our Trip model.
+ Let's make a migration for our new model and run it to create the corresponding table.
+ ```sh
+ (env)$ python manage.py makemigrations
+ (env)$ python manage.py migrate
+ ```
+ * Now that our database has a Trip table, let's set up the corresponding admin page. Open ```trips/admin.py``` and register a ```TripAdmin```. Visit the admin page and add a new Trip record.
+ * Like the user data, we need a way to serialize the trip data to pass it between the client and the server, so add a new serializer to the bottom of the ```trips/serializers.py``` file. By identifying certain fields as "read only", we can ensure that they will never be created or updated via the serializer. In this case, we want the server to be responsible for creating the ```id```, ```created```, and ```updated``` fields.
+ * Add the ```TripView``` to ```trips/views.py```. As you can see, our ```TripView``` is incredibly basic. We leveraged the DRF ```ReadOnlyModelViewSet``` to support our trip list and trip detail views. For now, our view will return all trips. Note that like the ```LogOutView```, a user needs to be authenticated in order to access this API.
+ * Include the trip-specific URL configuration in the main URLs file, ```taxi/urls.py```. Then, add our first trip-specific URL, which enables our ```TripView``` to provide a list of trips. Create a ```trips/urls.py``` file. 
+ * Run again tests.
+ 
+### Single Trip
+
+Our next, and last, HTTP test covers the trip detail feature. With this feature, users are able to retrieve the details of a trip identified by its primary key (UUID) value.
+
+ * Add the ```test_user_can_retrieve_trip_by_id``` to ```HttpTripTest``` in ```trips/tests/test_http.py```. Here, we leveraged the use of the handy ```get_absolute_url``` function on our ```Trip``` model to identify the location of our ```Trip``` resource. We added asserts that get the serialized data of a single trip and a success status.
+ * Update the ```Tripview``` in ```trips/views.py```. Supporting our new functionality is as easy as adding two variables to our TripView:
+
+    The ```lookup_field``` variable tells the view to get the trip record by its ```id``` value.
+    The ```lookup_url_kwarg``` variable tells the view what named parameter to use to extract the ```id``` value from the URL.
+    
+ * Add the URL to ```trips/urls.py```. We identified a ```trip_id``` in our URL configuration, which should be a UUID.
+
 
 ## TODO
  * [ ] Create simple GET requests with Django REST Framework.
