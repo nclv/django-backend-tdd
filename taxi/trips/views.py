@@ -1,10 +1,11 @@
 from django.shortcuts import render
+from django.db.models import Q
 
 # Create your views here.
 
-from django.contrib.auth import get_user_model, login, logout # new
-from django.contrib.auth.forms import AuthenticationForm # new
-from rest_framework import generics, permissions, status, views, viewsets # new
+from django.contrib.auth import get_user_model, login, logout  # new
+from django.contrib.auth.forms import AuthenticationForm  # new
+from rest_framework import generics, permissions, status, views, viewsets  # new
 from rest_framework.response import Response
 
 from .models import Trip
@@ -38,8 +39,16 @@ class LogOutView(views.APIView):
 
 
 class TripView(viewsets.ReadOnlyModelViewSet):
-    lookup_field = 'id' # new
-    lookup_url_kwarg = 'trip_id' # new
+    lookup_field = "id"  # new
+    lookup_url_kwarg = "trip_id"  # new
     permission_classes = (permissions.IsAuthenticated,)
-    queryset = Trip.objects.all()
     serializer_class = TripSerializer
+
+    # new
+    def get_queryset(self):
+        user = self.request.user
+        if user.group == "driver":
+            return Trip.objects.filter(Q(status=Trip.REQUESTED) | Q(driver=user))
+        if user.group == "rider":
+            return Trip.objects.filter(rider=user)
+        return Trip.objects.none()

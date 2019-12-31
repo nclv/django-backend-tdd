@@ -183,6 +183,85 @@ Our next, and last, HTTP test covers the trip detail feature. With this feature,
     
  * Add the URL to ```trips/urls.py```. We identified a ```trip_id``` in our URL configuration, which should be a UUID.
 
+## WebSockets
+
+Up until now, we have dealt with users in a generic way: Users can authenticate and they can retrieve trips. The following section separates users into distinct roles, and this is where things get interesting. Fundamentally, users can participate in trips in one of two ways—they either drive the cars or they ride in them. A rider initiates the trip with a request, which is broadcasted to all available drivers. A driver starts a trip by accepting the request. At this point, the driver heads to the pick-up address. The rider is instantly alerted that a driver has started the trip and other drivers are notified that the trip is no longer up for grabs.
+
+Instantaneous communication between the driver and the rider is vital here, and we can achieve it using WebSockets via Django Channels.
+
+### Django Channels Setup
+
+ * Create a new ```trips/tests/test_websocket.py``` file. There's a lot going on here. The first thing you'll notice is that we're using ```pytest``` instead of the built-in Django testing tools. We're also using coroutines that were introduced with the ```asyncio``` module in Python 3.4. Django Channels 2.x mandates the use of both ```pytest``` and ```asyncio```.
+ Remember how we created HTTP test classes by extending ```APITestCase```? Grouping multiple tests with pytest only requires you to write a basic class. We named ours ```TestWebsockets```. We also decorated the class with two marks, which sets metadata on each of the test methods contained within. The ```@pytest.mark.asyncio``` mark tells pytest to treat tests as asyncio coroutines. The ```@pytest.mark.django_db``` mark allows tests to access the Django database. Specifying ```transaction=True``` ensures that the database will be flushed between tests.
+
+ Let's look at the ```create_user()``` function next. Accessing the Django database is a synchronous operation as opposed to an asynchronous one, which means you need to handle it in a special way to ensure that the connections are closed properly. All functions that access the Django ORM should be decorated with ```@database_sync_to_async```.
+
+ Finally, we come to the actual test. First, pay attention to the fact that we included a ```TEST_CHANNEL_LAYERS``` constant at the top of the file after the imports. We used that constant in the first line of our test along with the ```settings``` fixture provided by ```pytest-django```. This line of code effectively overwrites the application's settings to use the ```InMemoryChannelLayer``` instead of the configured ```RedisChannelLayer```. Doing this allows us to *focus our tests on the behavior we are programming rather than the implementation* with Redis. Rest assured that when we run our server in a non-testing  environment, Redis will be used.
+
+ We went through a lot of trouble setting up authentication in earlier chapters of this course. Requests over ```WebSockets```  use authentication too. In the browser, every ```WebSockets``` request sends cookies (including our ```sessionid```) to the server. Remember, the ```sessionid``` cookie is saved in our browser after a successful login.
+ 
+ We have to handle this behavior explicitly in our test by creating an instance of ```Client()``` and forcing a login with the authentication backend. Then we can extract the ```sessionid``` cookie from the ```Client``` and add it to our cookie header in our ```WebSockets``` request. We send this request using ```WebsocketCommunicator```, which is essentially the Channels counterpart to Django's ```Client```.
+ 
+ * Add a ```pytest.ini``` file to the outermost directory. From the ```"server/taxi"``` directory, run the ```pytest``` tests and watch them fail.
+ * We need to add a consumer, Channel's version of a Django view. Create a new ```trips/consumers.py``` file. We access the user from the ```scope``` like we would from a traditional Django ```request```. Funny how closely all of these features match up. Our ```connect()``` method accepts the connection if the user is authenticated and rejects it otherwise.
+ * Now we need to update our ```routing.py``` file to get our tests to pass. This setup declares that all ```WebSockets``` requests should be passed through an ```AuthMiddlewareStack```, which processes cookies and handles session authentication. We also define routes with ```URLRouter``` in a way that is reminiscent of the Django urlconf.
+ * Run the tests again.
+ 
+We're going to have to create a user, authenticate it, and pass it in the request as part of every test from this point forward. Let's refactor our code to capture that behavior as part of each test's setup.
+ * Add some code to the bottom of our ```trips/tests/test_websocket.py```. Then update the existing test to use it.
+
+### Create Trips
+
+ * Next, we're going to be handling the functionality that allows riders to create trips and drivers to update them. Add a new test to ```TestWebsockets``` in ```trips/tests/test_websocket.py```. After this test establishes an authenticated ```WebSockets``` connection, it sends a JSON-encoded message to the server, which will then create a new ```Trip``` and will return it to the client in a response. All messages should include a ```type```. Also, remember to disconnect from the server at the end of every test.
+ * Add fields to the ```Trip``` model in ```trips/models.py```. We expanded our existing ```Trip``` model, in order to link a driver and a rider to a trip. Remember: Drivers and riders are just normal users that belong to different user groups. Later on, we'll see how the same app can serve both types of users and give each a unique experience.
+ * Make and run migrations to update our ```Trip``` model database table : ```python manage.py makemigrations trips --name trip_driver_rider``` then ```python manage.py migrate```.
+ * Let's update our admin page to reflect the changes we made in our model.
+ 
+By default, our ```TripSerializer``` processes related models as primary keys. That is the exact behavior that we want when we use a serializer to create a database record. On the other hand, when we get the serialized ```Trip``` data back from the server, we want more information about the rider and the driver than just their database IDs.
+ * Create a new ```ReadOnlyTripSerializer``` after our existing ```TripSerializer```. The difference is that the ```ReadOnlyTripSerializer``` serializes the full ```User``` object instead of its primary key.
+ * Update the ```trips/consumers.py``` file. All incoming messages are received by the ```receive_json()``` method in the consumer. Here is where you should delegate the business logic to process different message types. Our ```create_trip()``` method creates a new trip and passes the details back to the client. Note that we are using a special decorated ```_create_trip()``` helper method to do the actual database update.
+ * Let's do another round of refactoring to avoid duplicating code. Add an helper to the bottom of the ```trips/tests/test_websocket.py``` file. Update the test we just created too.
+When a rider creates a trip, he should be automatically registered to receive updates about that trip, so that whenever a driver updates the trip, the rider will receive a notification.
+ * Add a new test to ```trips/tests/test_websocket.py```. This test should prove that once a rider has created a trip, he gets added to a group to receive updates about it. Our test accesses that group and then sends a message to it via the ```group_send()``` method.
+ * Update ```consumers.py```. Remember how we insisted on including a ```type``` in every message? Channels handles messages sent to groups (over channel layers) differently than it handles messages sent to the server directly by the client. Channels replaces all ```.``` in the message type with ```_``` and searches the consumer for a method name that matches. In this case, ```echo.message``` will access the ```echo_message()``` method.
+
+Some other things to note:
+
+    We initialize a ```trips``` list and keep track of the rider's trips during the life of the request. (We could also do this on the user's session if we wanted to.)
+    When we create a trip, we add it to our tracked list. We also add the user to a group identified by the new trip's natural key value.
+    We explicitly remove the user from each group when he disconnects. The ```asyncio.gather()``` method executes a list of asynchronous commands.
+
+### Accessing Persistent Trip Data
+
+We're successfully tracking a rider's trips as long as his session is alive. But what happens when that rider closes the app and then opens it again? We need to re-establish the connections to his groups.
+ * Let's create a new test. Start by creating a new function to create a trip in the database.
+ * Update the consumer again. We expanded the ```connect()``` method to retrieve the rider's trips and add the rider to each one's associated group. The ```_get_trips()``` method queries the database and needs to be decorated appropriately. We don't want to add the rider to the same trip twice.
+
+### Update trips
+
+ * Let's handle the functionality to update existing trips. Start with a test. We can already anticipate needing to reuse updating behavior, so we can avoid refactoring by adding a proper service function now. In this test, we are explicitly updating an existing trip's status from ```REQUESTED``` to ```IN_PROGRESS```. We send the request, the server updates the trip, we confirm that the response data matches our expectations.
+ * Edit the consumer to handle updates. We have a new event type—update.trip. We created corresponding ```update_trip()``` and ```_update_trip()``` methods to process the event. Updating the trip adds the driver to the associated trip group.
+ * Add one more test for the driver. The driver should receive a notification of any updates that occur on the trip. This test does not require any changes to the consumer.
+ * All drivers should be alerted whenever a new trip is created. Riders should be alerted when a driver updates the trip that they created. Add tests to capture that behavior.
+ * We need to update some of our consumer's methods to accommodate the driver. First, we check whether the user is a driver when the ```WebSocket``` connection is established. If he is, then we subscribe him to the drivers group. Next, we alert all drivers when a rider broadcasts a trip request.
+
+ When a driver accepts a request, we need to alert the corresponding rider every time the driver updates the trip's status. For example, the rider should get a message like "your ride is on its way". Lastly, a driver should be removed from the drivers group when he closes his WebSocket connection by exiting the app.
+
+## UI support
+
+Up until now, we haven't had a reason to track users as drivers or riders. Users can be either. But as soon as we add a UI, we will need a way for users to sign up with a role. Drivers will see a different UI and will experience different functionality than riders.
+
+ * The first thing we need to do is add support for user groups in our serializers in ```trips/serializers.py```.
+ * Next, update the custom user model in ```trips/models.py``` to support groups as well. We are not adding any database fields so we don't need to create a new migration.
+ * Lastly, add the proper filters to the ```TripView``` in ```trips/views.py```.
+ * First, within ```trips/tests/test_http.py```, update the ```create_user()``` function to take an additional ```group_name``` parameter. And add the ```group``` to the ```test_user_can_sign_up``` test in ```AuthenticationTest```. Next, update ```HttpTripTest```.
+After modifications, all tests should pass. ```python manage.py test trips.tests```
+
+ * Finally, run the server and test out the DRF Browsable API:
+    http://localhost:8000/api/sign_up/
+    http://localhost:8000/api/log_in/s
+
+## User Photos
 
 ## TODO
  * [ ] Create simple GET requests with Django REST Framework.
