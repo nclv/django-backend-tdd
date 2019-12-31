@@ -264,8 +264,8 @@ After modifications, all tests should pass. ```python manage.py test trips.tests
 ## User Photos
 
 ## TODO
- * [ ] Create simple GET requests with Django REST Framework.
- * [ ] Implement token-based authentication.
- * [ ] Use Django Channels to create and update data on the server.
- * [ ] Send messages to the UI from the server via WebSockets.
- * [ ] Test asyncio coroutines with pytest.
+ * [x] Create simple GET requests with Django REST Framework.
+ * [x] Implement token-based authentication.
+ * [x] Use Django Channels to create and update data on the server.
+ * [x] Send messages to the UI from the server via WebSockets.
+ * [x] Test asyncio coroutines with pytest.
