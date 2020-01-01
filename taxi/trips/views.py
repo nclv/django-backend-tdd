@@ -1,15 +1,15 @@
-from django.shortcuts import render
-from django.db.models import Q
-
 # Create your views here.
 
 from django.contrib.auth import get_user_model, login, logout  # new
 from django.contrib.auth.forms import AuthenticationForm  # new
+from django.shortcuts import render
+from django.db.models import Q
+
 from rest_framework import generics, permissions, status, views, viewsets  # new
 from rest_framework.response import Response
 
 from .models import Trip
-from .serializers import TripSerializer, UserSerializer
+from .serializers import ReadOnlyTripSerializer, UserSerializer
 
 
 class SignUpView(generics.CreateAPIView):
@@ -42,7 +42,7 @@ class TripView(viewsets.ReadOnlyModelViewSet):
     lookup_field = "id"  # new
     lookup_url_kwarg = "trip_id"  # new
     permission_classes = (permissions.IsAuthenticated,)
-    serializer_class = TripSerializer
+    serializer_class = ReadOnlyTripSerializer
 
     # new
     def get_queryset(self):

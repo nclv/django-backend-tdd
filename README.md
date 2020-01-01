@@ -263,6 +263,36 @@ After modifications, all tests should pass. ```python manage.py test trips.tests
 
 ## User Photos
 
+Viewing a user's photo is an important piece of functionality in ride-sharing apps. In fact, most of these apps make it mandatory to provide a photo before you can drive or ride. From one perspective, it's a security issue—riders need to confirm that the drivers are who they expect before they enter their vehicles. User photos are also good design and add life to the product.
+
+Our app will allow users to add their photos at sign up.
+
+### Media Files
+
+Media files are a form of user-generated static files and Django handles both in a similar way. We need to provide two new settings, ```MEDIA_ROOT``` and ```MEDIA_URL```.
+
+The ```MEDIA_ROOT``` is the path to the directory where file uploads will be saved. For the purpose of this tutorial, we can create a "media" folder inside our "server" directory. In a production environment, we'd specify an absolute path to a directory on the server or we'd store files with a service like AWS S3. The ```MEDIA_URL``` is the prefix to use in our URL path.
+
+ * Set both the ```MEDIA_URL``` and the ```MEDIA_ROOT``` within the settings file.
+ * One last step is required to get our local environment to serve media files. Update ```taxi/urls.py```.
+
+ Media files can now be retrieved via ```http://localhost:8000/media/<file_path>/``` on your local machine.
+ 
+ To test, add a new folder called media to server. Then, add a test file called *test.txt* to that folder and add some random text to the file. Fire up the server and navigate to ```http://localhost:8000/media/test.txt``` to view the file.
+
+     *Make sure you remove the ```static()``` function from the urlpatterns when you deploy your application. We only need that for local development.*
+
+ * Change the existing ```AuthenticationTest.test_user_can_sign_up``` test. Add the ```create_photo_file``` helper function right after the ```create_user``` helper. This code leverages the ```Pillow``` library, ```BytesIO``` from the standard library, and Django's ```SimpleUploadedFile``` to create fake image data. Of course the test will fail since we need to update our user model and its serializer.
+ * Modify the user model. Now, when users upload their photos, the app will save them in a photos subdirectory within our media folder.
+
+In order to display a photo, we need either the relative URL (i.e. ```/media/photos/photo.jpg```) or the absolute URL (i.e. ```http://localhost:8080/media/photos/photo.jpg```). Django REST Framework provides a ```use_url=True``` property on its ```ImageField``` class, but the absolute URL it provides does not include the port. We can get around this shortcoming by creating our own custom serializer field.
+
+ * Edit the ```serializers.py``` file to create and use a new ```MediaImageField```.
+ * Edit the ```views.py``` file to make ```TripView``` use the ```ReadOnlyTripSerializer```. We want the Trip API response payload to include full driver and rider object representations.
+ * One last thing—create a migration for the new ```photo``` field on our user table and run the migrations.
+ * Now the tests should pass. ```python manage.py test trips.tests```
+
+
 ## TODO
  * [x] Create simple GET requests with Django REST Framework.
  * [x] Implement token-based authentication.
